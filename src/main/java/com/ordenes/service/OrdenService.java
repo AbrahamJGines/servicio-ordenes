@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.Optional;
+import java.util.function.Consumer;
+
 @Service
 public class OrdenService {
 
@@ -39,9 +42,9 @@ public class OrdenService {
                             .flatMap(pagoResponse -> {
 
                                 if (pagoResponse.estado().equals("APPROVED")) {
-                                    savedOrden.setEstado(OrdenEstado.PAID.name());
+                                    marcarOrdenPagada.accept(savedOrden);
                                 } else {
-                                    savedOrden.setEstado(OrdenEstado.PAYMENT_FAILED.name());
+                                    marcarOrdenFallida.accept(savedOrden);
                                 }
 
                                 return ordenRepository.save(savedOrden);
@@ -52,14 +55,24 @@ public class OrdenService {
 
     public Flux<OrdenResponse> listarOrdenes() {
         return ordenRepository.findAll()
+                .collectList()
+                .map(lista -> lista.stream()
+                        .filter(o -> o.getEstado().equals(OrdenEstado.PAID.name()))
+                        .toList()
+                )
+                .flatMapMany(Flux::fromIterable)
                 .map(this::toResponse);
     }
 
     public Mono<OrdenResponse> obtenerOrden(Long id) {
 
         return ordenRepository.findById(id)
-                .switchIfEmpty(Mono.error(new RuntimeException("Orden no encontrada")))
-                .map(this::toResponse);
+                .map(Optional::ofNullable)
+                .defaultIfEmpty(Optional.empty())
+                .flatMap(optionalOrden -> optionalOrden
+                        .map(orden -> Mono.just(toResponse(orden)))
+                        .orElseGet(() -> Mono.error(new RuntimeException("Orden no encontrada")))
+                );
     }
 
     private OrdenResponse toResponse(Orden orden) {
@@ -70,5 +83,11 @@ public class OrdenService {
                 orden.getEstado()
         );
     }
+
+    private final Consumer<Orden> marcarOrdenPagada =
+            orden -> orden.setEstado(OrdenEstado.PAID.name());
+
+    private final Consumer<Orden> marcarOrdenFallida =
+            orden -> orden.setEstado(OrdenEstado.PAYMENT_FAILED.name());
 
 }
