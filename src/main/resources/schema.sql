@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS ordenes (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    producto VARCHAR(255),
+    monto DOUBLE,
+    estado VARCHAR(50)
+);
